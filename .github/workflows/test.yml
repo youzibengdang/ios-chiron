@@ -3,6 +3,6 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     steps:
-      - run: echo "hello from macos-14" && uname -a && sw_vers && xcodebuild -version
+      - run: echo "hello from ubuntu" && uname -a
