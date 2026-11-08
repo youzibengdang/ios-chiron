@@ -84,9 +84,11 @@ jobs:
           echo "PKG=$PKG"
           rm -rf /tmp/kdkpkg
           pkgutil --expand-full "$PKG" /tmp/kdkpkg
-          echo "--- expanded .kdk dirs ---"
-          find /tmp/kdkpkg -name '*.kdk' -type d
-          sudo cp -R /tmp/kdkpkg/KernelDebugKit.pkg/Payload/Library/Developer/KDKs/. /Library/Developer/KDKs/
+          echo "--- expanded tree (dirs) ---"
+          find /tmp/kdkpkg -type d | head -80
+          KDKDIR=$(find /tmp/kdkpkg -type d -name 'KDK_*' | head -1)
+          echo "KDKDIR=$KDKDIR"
+          sudo cp -R "$KDKDIR" /Library/Developer/KDKs/
           ls -la /Library/Developer/KDKs
 
       - name: Build
