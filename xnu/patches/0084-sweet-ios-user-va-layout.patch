@@ -1,14 +1,14 @@
 diff --git a/osfmk/mach/arm/vm_param.h b/osfmk/mach/arm/vm_param.h
 --- a/osfmk/mach/arm/vm_param.h
 +++ b/osfmk/mach/arm/vm_param.h
-@@ -135,9 +135,7 @@
+@@ -135,8 +135,7 @@
  #define MACH_VM_MIN_ADDRESS_RAW 0x0ULL
 -#if defined(XNU_PLATFORM_MacOSX) || defined(XNU_PLATFORM_DriverKit)
 -#define MACH_VM_MAX_ADDRESS_RAW 0x00007FFFFE000000ULL
 -#else
-+/* chiron: iOS-style 64GB user VA. The arm commpage nests at 0xFFFFFC000 and
-+ * pmap.c static_assert requires floor(commpage,1GB) >= MACH_VM_MAX_ADDRESS.
-+ * The macOS 47-bit value (0x7FFFFE000000) would make that assert impossible. */
++/* chiron: iOS-style 64GB user VA. pmap.c nests commpage at 0xFFFFFC000 above
++ * MACH_VM_MAX_ADDRESS; the macOS 47-bit value (0x7FFFFE000000) makes that
++ * static_assert impossible. */
  #define MACH_VM_MAX_ADDRESS_RAW 0x0000000FC0000000ULL
 -#endif
  
