@@ -73,6 +73,7 @@ jobs:
           sudo mkdir -p /Library/Developer/KDKs
           curl -L --fail --retry 6 --retry-delay 5 --retry-all-errors \
             -H "Accept: application/octet-stream" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "User-Agent: chiron" \
             -o /tmp/KDK.dmg \
             https://api.github.com/repos/dortania/KdkSupportPkg/releases/assets/135995669
