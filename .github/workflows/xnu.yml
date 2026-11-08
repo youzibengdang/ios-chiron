@@ -82,13 +82,7 @@ jobs:
           7z x /tmp/KDK.dmg -o/tmp/kdkx -y >/dev/null
           PKG=$(find /tmp/kdkx -name 'KernelDebugKit.pkg' | head -1)
           echo "PKG=$PKG"
-          rm -rf /tmp/kdkpkg
-          pkgutil --expand-full "$PKG" /tmp/kdkpkg
-          echo "--- expanded tree (dirs) ---"
-          find /tmp/kdkpkg -type d | head -80
-          KDKDIR=$(find /tmp/kdkpkg -type d -name 'KDK_*' | head -1)
-          echo "KDKDIR=$KDKDIR"
-          sudo cp -R "$KDKDIR" /Library/Developer/KDKs/
+          sudo installer -pkg "$PKG" -target /
           ls -la /Library/Developer/KDKs
 
       - name: Build
