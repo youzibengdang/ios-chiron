@@ -247,7 +247,7 @@ index 0000000..a044ad0
 +#define __ARM_ENABLE_SWAP__       1
 +#define __ARM_V8_CRYPTO_EXTENSIONS__ 1
 +#define __ARM_PAN_AVAILABLE__     1
-+#define __ARM_16K_PG__            0 /* chiron: A73 lacks 16K granule, build 4K */
++/* chiron: __ARM_16K_PG__ MUST stay undefined (proc_reg.h branches on #ifdef) */
 +
 +#define HAS_GIC_V3                1
 +
