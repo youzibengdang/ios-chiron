@@ -36,7 +36,7 @@ jobs:
   build:
     # macos-14 still ships Xcode 15.x: its iig matches the xnu-8796 IORPC ABI
     # (Xcode 16's iig emits IORPC.kernelContent, which this xnu lacks)
-    runs-on: macos-latest
+    runs-on: macos-14
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -66,24 +66,6 @@ jobs:
           sudo xcode-select -s "$XC"
           xcodebuild -version
           xcrun --find iig
-
-      - name: Pre-install KDK 13.5 (bypass hdiutil on macOS 26 runner)
-        run: |
-          brew install sevenzip
-          sudo mkdir -p /Library/Developer/KDKs
-          KDK_URL=$(curl -s https://raw.githubusercontent.com/dortania/KdkSupportPkg/gh-pages/manifest.json | jq -r '.[] | select(.name=="Kernel Debug Kit 13.5 build 22G74") | .url')
-          echo "KDK_URL=$KDK_URL"
-          curl -L --fail --retry 6 --retry-delay 5 --retry-all-errors -o /tmp/KDK.dmg "$KDK_URL"
-          rm -rf /tmp/kdkx && mkdir -p /tmp/kdkx
-          7z x /tmp/KDK.dmg -o/tmp/kdkx -y >/dev/null
-          PKG=$(find /tmp/kdkx -name 'KernelDebugKit.pkg' | head -1)
-          echo "PKG=$PKG"
-          rm -rf /tmp/kdkpkg
-          pkgutil --expand-full "$PKG" /tmp/kdkpkg
-          echo "--- expanded .kdk dirs ---"
-          find /tmp/kdkpkg -name '*.kdk' -type d
-          sudo cp -R /tmp/kdkpkg/KernelDebugKit.pkg/Payload/Library/Developer/KDKs/. /Library/Developer/KDKs/
-          ls -la /Library/Developer/KDKs
 
       - name: Build
         working-directory: dxb
