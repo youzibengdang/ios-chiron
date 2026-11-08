@@ -90,7 +90,19 @@ jobs:
         env:
           # keep going after errors so one run reports every compile failure
           MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
-        run: bash build.sh
+        run: |
+          # xnu emits megabytes of -Wreserved-identifier noise; keep the full log
+          # on the runner and print only a digest, so a failed run stays readable.
+          bash build.sh > /tmp/build.log 2>&1
+
+      - name: Error digest
+        if: failure()
+        run: |
+          echo "==== build.log: $(wc -c < /tmp/build.log) bytes ===="
+          echo "==== error lines ===="
+          grep -n -E "error:|Error [0-9]+$|fatal error|Undefined symbols|clang: error|^ld: " /tmp/build.log | head -120 || echo "(none)"
+          echo "==== last 150 lines ===="
+          tail -150 /tmp/build.log
 
       - name: Package build tree for local compiles
         if: always()
