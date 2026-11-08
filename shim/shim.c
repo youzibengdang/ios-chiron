@@ -17,7 +17,7 @@
 #define PSHOLD			0x0c264000UL
 
 #define GICD_BASE		0x17a00000UL
-#define GICR_BASE		0x17a60000UL
+#define GICR_BASE		0x17b00000UL	/* chiron gic redistributor */
 #define GICR_SIZE		0x100000UL
 #define GICR_PE_SIZE		0x20000UL
 #define GICR_TYPER		0x08
@@ -183,6 +183,12 @@ void secondary_main(uint64_t idx)
 	smc(PSCI_CPU_OFF, 0, 0, 0);
 }
 
+/* logical CPU index -> chiron MPIDR Aff1:Aff0 (A53 0x0-0x3, A73 0x100-0x103) */
+static uint64_t cpu_mpidr(int i)
+{
+	return i < 4 ? (uint64_t)i : 0x100u + (uint64_t)(i - 4);
+}
+
 static void __attribute__((unused)) test_smp(void)
 {
 	stage = "smp";
@@ -190,12 +196,12 @@ static void __attribute__((unused)) test_smp(void)
 	int64_t ret[NR_CPUS];
 
 	for (int i = 1; i < NR_CPUS; i++)
-		ret[i] = smc(PSCI_CPU_ON, (uint64_t)i << 8, (uintptr_t)secondary_entry, i);
+		ret[i] = smc(PSCI_CPU_ON, cpu_mpidr(i), (uintptr_t)secondary_entry, i);
 	delay_ms(500);
 	for (int i = 1; i < NR_CPUS; i++) {
 		char label[] = "CPU0";
 		label[3] = '0' + i;
-		if (((uint64_t)i << 8) == self)
+		if (cpu_mpidr(i) == self)
 			con_str(label, "is boot cpu");
 		else
 			con_hex2(label, "ret=", (uint32_t)ret[i], "mpidr=",
