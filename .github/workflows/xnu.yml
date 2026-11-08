@@ -67,6 +67,29 @@ jobs:
           xcodebuild -version
           xcrun --find iig
 
+      - name: Pre-install KDK 13.5 (bypass hdiutil on macOS 26 runner)
+        run: |
+          brew install sevenzip
+          sudo mkdir -p /Library/Developer/KDKs
+          KDK_URL=$(curl -s https://raw.githubusercontent.com/dortania/KdkSupportPkg/gh-pages/manifest.json | jq -r '.[] | select(.name=="Kernel Debug Kit 13.5 build 22G74") | .url')
+          echo "KDK_URL=$KDK_URL"
+          curl -L --fail -o /tmp/KDK.dmg "$KDK_URL"
+          mkdir -p /tmp/kdkx
+          7z x /tmp/KDK.dmg -o/tmp/kdkx -y >/dev/null
+          HFS=$(find /tmp/kdkx -name '*.hfs' | head -1)
+          echo "HFS=$HFS"
+          if [ -n "$HFS" ]; then
+            mkdir -p /tmp/kdkhfs
+            7z x "$HFS" -o/tmp/kdkhfs -y >/dev/null
+          fi
+          PKG=$(find /tmp/kdkx /tmp/kdkhfs -name 'KernelDebugKit.pkg' | head -1)
+          echo "PKG=$PKG"
+          pkgutil --expand-full "$PKG" /tmp/kdkpkg
+          KDKDIR=$(find /tmp/kdkpkg -name 'KDK_13.5_22G74.kdk' -type d | head -1)
+          echo "KDKDIR=$KDKDIR"
+          sudo cp -R "$KDKDIR" /Library/Developer/KDKs/
+          ls -la /Library/Developer/KDKs
+
       - name: Build
         working-directory: dxb
         env:
