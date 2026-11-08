@@ -1,0 +1,86 @@
+diff --git a/osfmk/arm64/proc_reg.h b/osfmk/arm64/proc_reg.h
+--- a/osfmk/arm64/proc_reg.h
++++ b/osfmk/arm64/proc_reg.h
+@@ -935,7 +935,7 @@
+  * the kernel.
+  */
+ #endif /* __ARM_KERNEL_PROTECT__ */
+-#ifdef __ARM_16K_PG__
++#if __ARM_16K_PG__
+ #if __ARM64_PMAP_SUBPAGE_L1__
+ #define T0SZ_BOOT 25ULL
+ #else /* !__ARM64_PMAP_SUBPAGE_L1__ */
+@@ -953,7 +953,7 @@
+ /* T0SZ must be the same as T1SZ */
+ #define T1SZ_BOOT T0SZ_BOOT
+ #else /* defined(APPLE_ARM64_ARCH_FAMILY) */
+-#ifdef __ARM_16K_PG__
++#if __ARM_16K_PG__
+ #if __ARM64_PMAP_SUBPAGE_L1__
+ #define T1SZ_BOOT 25ULL
+ #else /* !__ARM64_PMAP_SUBPAGE_L1__ */
+@@ -963,7 +963,9 @@
+ #if __ARM64_PMAP_SUBPAGE_L1__
+ #define T1SZ_BOOT 26ULL
+ #else /* __ARM64_PMAP_SUBPAGE_L1__ */
+-#define T1SZ_BOOT 25ULL
++/* chiron: 4KB granule keeps the 47-bit kernel window (VM_MIN_KERNEL_ADDRESS
++ * 0xfffffe0000000000 with ARM_LARGE_MEMORY); 25 would put TTBR1 below it. */
++#define T1SZ_BOOT 17ULL
+ #endif /*__ARM64_PMAP_SUBPAGE_L1__*/
+ #endif /* __ARM_16K_PG__ */
+ #endif /* defined(APPLE_ARM64_ARCH_FAMILY) */
+@@ -1146,7 +1148,7 @@
+ /*
+  * ARM Page Granule
+  */
+-#ifdef __ARM_16K_PG__
++#if __ARM_16K_PG__
+ #define ARM_PGSHIFT 14
+ #else
+ #define ARM_PGSHIFT 12
+@@ -1277,7 +1279,7 @@
+ #define ARM_4K_TT_L3_SHIFT      12                    /* page descriptor shift */
+ #define ARM_4K_TT_L3_INDEX_MASK 0x00000000001ff000ULL /* mask for page descriptor index */
+ 
+-#ifdef __ARM_16K_PG__
++#if __ARM_16K_PG__
+ 
+ /* Native L0 defines */
+ #define ARM_TT_L0_SIZE       ARM_16K_TT_L0_SIZE
+@@ -1434,7 +1436,7 @@
+  */
+ 
+ #define TTE_SHIFT                   3                              /* shift width of a tte (sizeof(tte) == (1 << TTE_SHIFT)) */
+-#ifdef __ARM_16K_PG__
++#if __ARM_16K_PG__
+ #define TTE_PGENTRIES               (16384 >> TTE_SHIFT)           /* number of ttes per page */
+ #else
+ #define TTE_PGENTRIES               (4096 >> TTE_SHIFT)            /* number of ttes per page */
+@@ -1453,7 +1455,7 @@
+ #define ARM_TTE_TYPE_L3BLOCK        0x0000000000000002ULL
+ #define ARM_TTE_TYPE_MASK           0x0000000000000002ULL          /* mask for extracting the type */
+ 
+-#ifdef __ARM_16K_PG__
++#if __ARM_16K_PG__
+ /*
+  * Note that L0/L1 block entries are disallowed for the 16KB granule size; what
+  * are we doing with these?
+@@ -1547,7 +1549,7 @@
+  *    Covers 32MB (2^25) of address space.
+  */
+ 
+-#ifdef __ARM_16K_PG__
++#if __ARM_16K_PG__
+ #define ARM_PTE_SIZE    0x0000000000004000ULL /* size of area covered by a tte */
+ #define ARM_PTE_OFFMASK 0x0000000000003fffULL /* offset within pte area */
+ #define ARM_PTE_SHIFT   14                    /* page descriptor shift */
+@@ -1590,7 +1592,7 @@
+  */
+ 
+ #define PTE_SHIFT               3                     /* shift width of a pte (sizeof(pte) == (1 << PTE_SHIFT)) */
+-#ifdef __ARM_16K_PG__
++#if __ARM_16K_PG__
+ #define PTE_PGENTRIES           (16384 >> PTE_SHIFT)  /* number of ptes per page */
+ #else
+ #define PTE_PGENTRIES           (4096 >> PTE_SHIFT)   /* number of ptes per page */
