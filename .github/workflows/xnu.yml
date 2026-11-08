@@ -78,7 +78,7 @@ jobs:
           7z x /tmp/KDK.dmg -o/tmp/kdkx -y >/dev/null
           PKG=$(find /tmp/kdkx -name 'KernelDebugKit.pkg' | head -1)
           echo "PKG=$PKG"
-          rm -rf /tmp/kdkpkg && mkdir -p /tmp/kdkpkg
+          rm -rf /tmp/kdkpkg
           pkgutil --expand-full "$PKG" /tmp/kdkpkg
           echo "--- expanded .kdk dirs ---"
           find /tmp/kdkpkg -name '*.kdk' -type d
