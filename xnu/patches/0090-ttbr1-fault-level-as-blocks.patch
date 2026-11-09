@@ -1,0 +1,54 @@
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -1045,24 +1045,40 @@
+ Lsweet_fst_ok:
+ 	mov		x8, #0
+ Lsweet_fst_draw:
++	/*
++	 * Orientation independent readout: draw (x8 + 1) separate 90 px blocks on
++	 * row 1990, pitch 180 px. Count them on the photo.
++	 *   1  walk translates the KVA
++	 *   2  translation fault level 0
++	 *   3  translation fault level 1
++	 *   4  translation fault level 2
++	 *   5  translation fault level 3
++	 *   6  access flag / permission / anything else
++	 */
+ 	MOV64	x0, (0x9d41c798 + 1990 * 4320)
+-	mov		x9, #720
+-	mul		x10, x8, x9
+-	add		x0, x0, x10
+ 	mov		w1, #-1
++	mov		x9, #0
++Lsweet_cnt_block:
++	mov		x10, #720
++	mul		x11, x9, x10
++	add		x12, x0, x11
+ 	mov		x2, #24
+ 	mov		x4, #4320
+-Lsweet_slot_row:
+-	mov		x3, #180
+-	mov		x5, x0
+-Lsweet_slot_pixel:
++Lsweet_cnt_row:
++	mov		x3, #90
++	mov		x5, x12
++Lsweet_cnt_pixel:
+ 	str		w1, [x5], #4
+ 	subs	x3, x3, #1
+-	b.ne	Lsweet_slot_pixel
+-	add		x0, x0, x4
++	b.ne	Lsweet_cnt_pixel
++	add		x12, x12, x4
+ 	subs	x2, x2, #1
+-	b.ne	Lsweet_slot_row
++	b.ne	Lsweet_cnt_row
++	add		x9, x9, #1
++	cmp		x9, x8
++	b.lo	Lsweet_cnt_block
+ 	dsb		sy
++
+ Lsweet_ck3_end:
+ 
+ #endif
