@@ -1,0 +1,189 @@
+diff --git a/osfmk/arm64/sweet_early.h b/osfmk/arm64/sweet_early.h
+--- a/osfmk/arm64/sweet_early.h
++++ b/osfmk/arm64/sweet_early.h
+@@ -7,6 +7,17 @@
+ #include <stdint.h>
+ 
+ #if defined(SWEET)
++/*
++ * Chiron panel geometry, measured on hardware with the shim ladder:
++ * the splash buffer starts 458 rows / 490 columns above the scan origin, so
++ * splash base 0x9d600000 - 458*4320 - 490*4 renders at panel (0,0).
++ * The L2 block descriptors are written from the 2MB-aligned base below.
++ */
++#define SWEET_EARLY_FB_PA       0x9D41C798ULL    /* scan origin, VA = PA */
++#define SWEET_EARLY_FB_BLOCK    0x9D400000ULL    /* aligned alias/block base */
++#define SWEET_EARLY_FB_BLOCKS   6u               /* 2160x4320 + offset */
++#define SWEET_EARLY_FB_SLIDE    (SWEET_EARLY_FB_PA - SWEET_EARLY_FB_BLOCK)
++
+ void sweet_early_mark(unsigned int stage, const char *label);
+ void sweet_early_putc(char c);
+ void sweet_early_panic(const char *fmt, va_list *args);
+diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
+--- a/osfmk/arm64/sweet_early.c
++++ b/osfmk/arm64/sweet_early.c
+@@ -1,7 +1,8 @@
+ /*
+  * Redmi Note 10 Pro bootstrap console. No allocation, locks, ADT parsing or
+  * per-CPU state: panic() can reach this before a current thread exists.
+- * start.s maps the splash framebuffer VA=PA as Normal Non-Cacheable memory.
++ * start.s maps the splash framebuffer VA=PA (one 2MB L2 block per call,
++ * several blocks on 4K geometry) as Normal Non-Cacheable memory.
+  * arm_vm_init installs a reserved kernel VA alias before removing TTBR0;
+  * retain this console until the normal framebuffer serial console is ready.
+  */
+@@ -11,7 +12,7 @@
+ #include <stdint.h>
+ #include <kern/misc_protos.h>
+ 
+-static volatile uint32_t *early_fb = (volatile uint32_t *)(uintptr_t)0x9d600000;
++static volatile uint32_t *early_fb = (volatile uint32_t *)(uintptr_t)SWEET_EARLY_FB_PA;
+ #define EARLY_FB early_fb
+ #define EARLY_WIDTH 1080u
+ #define EARLY_HEIGHT 2160u
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -680,24 +680,52 @@
+ 
+ #if defined(SWEET)
+ 	/*
+-	 * Splash framebuffer: one 32MB Normal-NC block in the EXISTING V=P
+-	 * L2 table. Both framebuffer and RAM use L1 index 0; another call to
+-	 * create_bootstrap_mapping would replace the RAM L2 table.
+-	 * SWEET uses 16K pages and all bring-up RAM is below 4GB, so the first
+-	 * V=P L2 page is bootstrap_pagetables + 2*PGBYTES.
+-	 */
+-	MOV64	x10, 0x9d600000
++	 * Splash framebuffer: Normal-NC block descriptors in the EXISTING V=P
++	 * L2 table (another create_bootstrap_mapping call would replace it).
++	 * One descriptor covers ARM_TT_L2_SIZE: 2MB with the 4K granule used by
++	 * this kernel, 32MB with a 16K granule. The panel needs 2160 x 4320
++	 * bytes plus the measured scan-origin slide, so write 6 descriptors
++	 * starting at the 2MB-aligned base 0x9d400000 (12MB with 4K pages).
++	 */
++	MOV64	x10, 0x9d400000
+ 	MOV64	x11, (ARM_TTE_TYPE_BLOCK | ARM_TTE_VALID | ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) | ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) | ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX)
+-	orr		x11, x11, x10
+ 	and		x12, x10, #(ARM_TT_L2_INDEX_MASK)
+ 	lsr		x12, x12, #(ARM_TT_L2_SHIFT)
+ 	add		x13, x25, #(2 * PGBYTES)
+-	str		x11, [x13, x12, lsl #TTE_SHIFT]
++	add		x13, x13, x12, lsl #TTE_SHIFT
++	mov		x14, #6
++Lsweet_fb_block:
++	orr		x15, x11, x10
++	str		x15, [x13], #8
++	add		x10, x10, #(ARM_TT_L2_SIZE)
++	subs	x14, x14, #1
++	b.ne	Lsweet_fb_block
+ #endif
+ 
+ 	/* Ensure TTEs are visible */
+ 	dsb		ish
+ 
++#if defined(SWEET)
++	/*
++	 * Stage A: common_start reached with the MMU still off. Same plain
++	 * register-band idiom as the Stage 0 band above; only the row differs.
++	 */
++	MOV64	x0, (0x9d41c798 + 1700 * 4320)
++	mov		w1, #-1
++	mov		x2, #24
++	mov		x4, #4320
++Lsweet_stage_a_row:
++	mov		x3, #1080
++	mov		x5, x0
++Lsweet_stage_a_pixel:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	Lsweet_stage_a_pixel
++	add		x0, x0, x4
++	subs	x2, x2, #1
++	b.ne	Lsweet_stage_a_row
++	dsb		sy
++#endif
+ 
+ 	b		common_start
+ 
+@@ -836,6 +864,28 @@
+ 	MOV64   x0, SCTLR_EL1_DEFAULT
+ 	MSR_SCTLR_EL1_X0
+ 	isb		sy
++
++#if defined(SWEET)
++	/*
++	 * Stage B: the MMU is on and this store goes through the V=P block map
++	 * installed above, so the band only appears if that mapping is correct.
++	 */
++	MOV64	x0, (0x9d41c798 + 1750 * 4320)
++	mov		w1, #-1
++	mov		x2, #24
++	mov		x4, #4320
++Lsweet_stage_b_row:
++	mov		x3, #1080
++	mov		x5, x0
++Lsweet_stage_b_pixel:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	Lsweet_stage_b_pixel
++	add		x0, x0, x4
++	subs	x2, x2, #1
++	b.ne	Lsweet_stage_b_row
++	dsb		sy
++#endif
+ 
+ #if !VMAPPLE && !defined(SWEET)
+ 	MOV64   x1, SCTLR_EL1_DEFAULT
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1828,8 +1828,9 @@
+ #if defined(SWEET)
+ /*
+  * The reserved low-globals/kernel region is excluded from VM allocation.
+- * Use the otherwise empty 32MB block above low globals and below gVirtBase
+- * for a Normal-NC framebuffer alias that survives bootstrap TTBR0 teardown.
++ * Use the otherwise empty blocks above low globals and below gVirtBase for a
++ * Normal-NC framebuffer alias that survives bootstrap TTBR0 teardown.
++ * One block is ARM_TT_L2_SIZE, so the panel needs several of them.
+  */
+ #define SWEET_EARLY_FB_VA (VM_MIN_KERNEL_ADDRESS + ARM_TT_L2_SIZE)
+ 
+@@ -1837,16 +1838,21 @@
+ sweet_early_map_final(void)
+ {
+ 	const vm_map_address_t va = SWEET_EARLY_FB_VA;
+-	assert(va + ARM_TT_L2_SIZE <= gVirtBase);
++	assert(va + (SWEET_EARLY_FB_BLOCKS * ARM_TT_L2_SIZE) <= gVirtBase);
+ 	tt_entry_t l1 = cpu_tte[(va & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT];
+ 	assert((l1 & (ARM_TTE_VALID | ARM_TTE_TYPE_MASK)) == (ARM_TTE_VALID | ARM_TTE_TYPE_TABLE));
+ 	tt_entry_t *l2 = (tt_entry_t *)phystokv(l1 & ARM_TTE_TABLE_MASK);
+ 	tt_entry_t *slot = &l2[(va & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT];
+-	assert(*slot == ARM_TTE_EMPTY);
+-	*slot = 0x9d600000ULL | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
+-	    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
+-	    ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) |
+-	    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;
++	for (unsigned int i = 0; i < SWEET_EARLY_FB_BLOCKS; i++) {
++		assert(slot[i] == ARM_TTE_EMPTY);
++	}
++	for (unsigned int i = 0; i < SWEET_EARLY_FB_BLOCKS; i++) {
++		slot[i] = (SWEET_EARLY_FB_BLOCK + i * ARM_TT_L2_SIZE) |
++		    ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
++		    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
++		    ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) |
++		    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;
++	}
+ 	__asm__ volatile("dsb ishst" ::: "memory");
+ }
+ #endif
+@@ -2190,7 +2196,7 @@
+ 
+ #if defined(SWEET)
+ 	/* The final TTBR1 is live; leave the outgoing VA=PA framebuffer alias. */
+-	sweet_early_relocate(SWEET_EARLY_FB_VA);
++	sweet_early_relocate(SWEET_EARLY_FB_VA + SWEET_EARLY_FB_SLIDE);
+ #endif
+ 	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
+ 
