@@ -1,0 +1,98 @@
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -987,31 +987,84 @@
+ 	dsb		sy
+ Lsweet_ck2_end:
+ 
++	/*
++	 * Stage D: run the walk for the C entry KVA, then encode PAR_EL1.FST as the
++	 * horizontal position of a 180 px wide block on row 1990:
++	 *   slot 0  the 47-bit walk translates that KVA
++	 *   slot 1  translation fault, level 0
++	 *   slot 2  translation fault, level 1
++	 *   slot 3  translation fault, level 2
++	 *   slot 4  translation fault, level 3
++	 *   slot 5  access flag / permission / anything else
++	 * The full-width band on row 1935 proves the AT instruction itself ran.
++	 */
+ 	at		s1e1r, x30
+ 	isb
+ 	mrs		x7, PAR_EL1
+-	tbnz	x7, #0, Lsweet_ck3_end
+-	mov		x6, sp
+-	at		s1e1r, x6
+-	isb
+-	mrs		x7, PAR_EL1
+-	tbnz	x7, #0, Lsweet_ck3_end
+ 	MOV64	x0, (0x9d41c798 + 1935 * 4320)
+ 	mov		w1, #-1
+ 	mov		x2, #24
+ 	mov		x4, #4320
+-Lsweet_ck3_row:
++Lsweet_at_row:
+ 	mov		x3, #1080
+ 	mov		x5, x0
+-Lsweet_ck3_pixel:
++Lsweet_at_pixel:
+ 	str		w1, [x5], #4
+ 	subs	x3, x3, #1
+-	b.ne	Lsweet_ck3_pixel
++	b.ne	Lsweet_at_pixel
+ 	add		x0, x0, x4
+ 	subs	x2, x2, #1
+-	b.ne	Lsweet_ck3_row
++	b.ne	Lsweet_at_row
++	dsb		sy
++
++	tbz		x7, #0, Lsweet_fst_ok
++	lsr		x7, x7, #1
++	and		x7, x7, #0x3f
++	cmp		x7, #4
++	b.ne	Lsweet_fst_a
++	mov		x8, #1
++	b		Lsweet_fst_draw
++Lsweet_fst_a:
++	cmp		x7, #5
++	b.ne	Lsweet_fst_b
++	mov		x8, #2
++	b		Lsweet_fst_draw
++Lsweet_fst_b:
++	cmp		x7, #6
++	b.ne	Lsweet_fst_c
++	mov		x8, #3
++	b		Lsweet_fst_draw
++Lsweet_fst_c:
++	cmp		x7, #7
++	b.ne	Lsweet_fst_d
++	mov		x8, #4
++	b		Lsweet_fst_draw
++Lsweet_fst_d:
++	mov		x8, #5
++	b		Lsweet_fst_draw
++Lsweet_fst_ok:
++	mov		x8, #0
++Lsweet_fst_draw:
++	MOV64	x0, (0x9d41c798 + 1990 * 4320)
++	mov		x9, #720
++	mul		x10, x8, x9
++	add		x0, x0, x10
++	mov		w1, #-1
++	mov		x2, #24
++	mov		x4, #4320
++Lsweet_slot_row:
++	mov		x3, #180
++	mov		x5, x0
++Lsweet_slot_pixel:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	Lsweet_slot_pixel
++	add		x0, x0, x4
++	subs	x2, x2, #1
++	b.ne	Lsweet_slot_row
+ 	dsb		sy
+ Lsweet_ck3_end:
++
+ #endif
+ 
+ #if !VMAPPLE && !defined(SWEET)
