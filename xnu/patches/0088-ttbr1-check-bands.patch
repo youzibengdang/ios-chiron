@@ -1,0 +1,113 @@
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -919,28 +919,100 @@
+ #endif
+ 
+ #if defined(SWEET)
+ 	/*
+-	 * Stage C: probe the TTBR1 window by reading the first instruction word
+-	 * of the C init routine through its KVA. If the L0 entry or the KVA L1
+-	 * table is wrong this load faults and this band never appears.
+-	 */
+-	ldr		w6, [x30]
++	 * TTBR1 diagnostics: one white band per checkpoint, 45 rows apart.
++	 *   1800  reached this point
++	 *   1845  TTBR1_EL1 holds the L0 page built above
++	 *   1890  TCR_EL1.T1SZ is 17 (47-bit walk starts at L0)
++	 *   1935  AT S1E1R succeeds for the C entry KVA and for the stack pointer
++	 * No load is issued here, so a broken window cannot fault.
++	 */
+ 	MOV64	x0, (0x9d41c798 + 1800 * 4320)
+ 	mov		w1, #-1
+ 	mov		x2, #24
+ 	mov		x4, #4320
+-Lsweet_stage_c_row:
++Lsweet_ck0_row:
+ 	mov		x3, #1080
+ 	mov		x5, x0
+-Lsweet_stage_c_pixel:
++Lsweet_ck0_pixel:
+ 	str		w1, [x5], #4
+ 	subs	x3, x3, #1
+-	b.ne	Lsweet_stage_c_pixel
++	b.ne	Lsweet_ck0_pixel
+ 	add		x0, x0, x4
+ 	subs	x2, x2, #1
+-	b.ne	Lsweet_stage_c_row
++	b.ne	Lsweet_ck0_row
+ 	dsb		sy
++
++	add		x8, x25, #8, lsl #12
++	and		x8, x8, #(TTBR_BADDR_MASK)
++	mrs		x7, TTBR1_EL1
++	cmp		x7, x8
++	b.ne	Lsweet_ck1_end
++	MOV64	x0, (0x9d41c798 + 1845 * 4320)
++	mov		w1, #-1
++	mov		x2, #24
++	mov		x4, #4320
++Lsweet_ck1_row:
++	mov		x3, #1080
++	mov		x5, x0
++Lsweet_ck1_pixel:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	Lsweet_ck1_pixel
++	add		x0, x0, x4
++	subs	x2, x2, #1
++	b.ne	Lsweet_ck1_row
++	dsb		sy
++Lsweet_ck1_end:
++
++	mrs		x7, TCR_EL1
++	lsr		x7, x7, #16
++	and		x7, x7, #0x3f
++	cmp		x7, #17
++	b.ne	Lsweet_ck2_end
++	MOV64	x0, (0x9d41c798 + 1890 * 4320)
++	mov		w1, #-1
++	mov		x2, #24
++	mov		x4, #4320
++Lsweet_ck2_row:
++	mov		x3, #1080
++	mov		x5, x0
++Lsweet_ck2_pixel:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	Lsweet_ck2_pixel
++	add		x0, x0, x4
++	subs	x2, x2, #1
++	b.ne	Lsweet_ck2_row
++	dsb		sy
++Lsweet_ck2_end:
++
++	at		s1e1r, x30
++	isb
++	mrs		x7, PAR_EL1
++	tbnz	x7, #0, Lsweet_ck3_end
++	mov		x6, sp
++	at		s1e1r, x6
++	isb
++	mrs		x7, PAR_EL1
++	tbnz	x7, #0, Lsweet_ck3_end
++	MOV64	x0, (0x9d41c798 + 1935 * 4320)
++	mov		w1, #-1
++	mov		x2, #24
++	mov		x4, #4320
++Lsweet_ck3_row:
++	mov		x3, #1080
++	mov		x5, x0
++Lsweet_ck3_pixel:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	Lsweet_ck3_pixel
++	add		x0, x0, x4
++	subs	x2, x2, #1
++	b.ne	Lsweet_ck3_row
++	dsb		sy
++Lsweet_ck3_end:
+ #endif
+ 
+ #if !VMAPPLE && !defined(SWEET)
+ 	MOV64   x1, SCTLR_EL1_DEFAULT
