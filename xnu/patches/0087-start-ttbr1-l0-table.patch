@@ -1,0 +1,86 @@
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -679,8 +679,35 @@
+ 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
+ 
+ #if defined(SWEET)
+ 	/*
++	 * TTBR1 level-0 table.
++	 * The 4KB build programs TCR_EL1 with T1SZ=17 (47-bit VA), so the TTBR1
++	 * walk starts at level 0: the KVA L1 table created above must sit under
++	 * an L0 entry or the first KVA jump translates to a fault. Use the page
++	 * past the worst case bootstrap allocation (8 pages: 2xL1 plus up to
++	 * 6xL2) and point the single entry covering the kernel window at the
++	 * KVA L1 table.
++	 */
++	add		x6, x25, #0x8000
++	mov		x7, x6
++	mov		x8, #(TTE_PGENTRIES)
++	mov		x9, xzr
++Lsweet_l0_clear:
++	str		x9, [x7], #(1 << TTE_SHIFT)
++	subs	x8, x8, #1
++	b.ne	Lsweet_l0_clear
++	lsr		x9, x14, #39					// L0 index of the KVA window base
++	and		x9, x9, #0x1ff
++	lsl		x9, x9, #(TTE_SHIFT)
++	add		x7, x6, x9
++	and		x8, x3, #(ARM_TTE_TABLE_MASK)	// KVA L1 table
++	mov		x10, #(ARM_TTE_BOOT_TABLE)
++	orr		x8, x10, x8
++	str		x8, [x7]
++	dsb		sy
++
++	/*
+ 	 * Splash framebuffer: Normal-NC block descriptors in the EXISTING V=P
+ 	 * L2 table (another create_bootstrap_mapping call would replace it).
+ 	 * One descriptor covers ARM_TT_L2_SIZE: 2MB with the 4K granule used by
+ 	 * this kernel, 32MB with a 16K granule. The panel needs 2160 x 4320
+@@ -771,9 +798,13 @@
+ 	and		x0, x25, #(TTBR_BADDR_MASK)
+ 	mov		x19, lr
+ 	bl		EXT(set_mmu_ttb)
+ 	mov		lr, x19
++#if defined(SWEET)
++	add		x0, x25, #0x8000				// level-0 table built above
++#else
+ 	add		x0, x25, PGBYTES
++#endif
+ 	and		x0, x0, #(TTBR_BADDR_MASK)
+ 	MSR_TTBR1_EL1_X0
+ 
+ 	// Set up MAIR attr0 for normal memory, attr1 for device memory
+@@ -883,8 +914,32 @@
+ 	b.ne	Lsweet_stage_b_pixel
+ 	add		x0, x0, x4
+ 	subs	x2, x2, #1
+ 	b.ne	Lsweet_stage_b_row
++	dsb		sy
++#endif
++
++#if defined(SWEET)
++	/*
++	 * Stage C: probe the TTBR1 window by reading the first instruction word
++	 * of the C init routine through its KVA. If the L0 entry or the KVA L1
++	 * table is wrong this load faults and this band never appears.
++	 */
++	ldr		w6, [x30]
++	MOV64	x0, (0x9d41c798 + 1800 * 4320)
++	mov		w1, #-1
++	mov		x2, #24
++	mov		x4, #4320
++Lsweet_stage_c_row:
++	mov		x3, #1080
++	mov		x5, x0
++Lsweet_stage_c_pixel:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	Lsweet_stage_c_pixel
++	add		x0, x0, x4
++	subs	x2, x2, #1
++	b.ne	Lsweet_stage_c_row
+ 	dsb		sy
+ #endif
+ 
+ #if !VMAPPLE && !defined(SWEET)
